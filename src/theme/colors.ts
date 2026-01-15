@@ -1,0 +1,21 @@
+export const LIGHT_COLORS = {
+  BG: "#FFF8F2",
+  CARD: "#FFFFFF",
+  BORDER: "#F3E2D4",
+  PRIMARY: "#FF7A3C",
+  PRIMARY_SOFT: "#FFE4CC",
+  ACCENT: "#FFD15C",
+  TEXT: "#1F2933",
+  MUTED: "#6B7280",
+};
+
+export const DARK_COLORS = {
+  BG: "#120A12",
+  CARD: "#1C1117",
+  BORDER: "#3A2633",
+  PRIMARY: "#FF7A3C",
+  PRIMARY_SOFT: "#FFB088",
+  ACCENT: "#FFD15C",
+  TEXT: "#F9FAFB",
+  MUTED: "#9CA3AF",
+};
