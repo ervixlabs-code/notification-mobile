@@ -1,6 +1,5 @@
 // src/screens/RegisterPasswordScreen.tsx
-
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Text,
   StyleSheet,
@@ -16,17 +15,85 @@ import Screen from "../components/Screen";
 import { useTheme } from "../theme/ThemeProvider";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/RootNavigator";
+import Toast from "react-native-toast-message";
 
 type Props = NativeStackScreenProps<RootStackParamList, "RegisterPassword">;
 
-const API_BASE =
-  (process.env as any)?.EXPO_PUBLIC_API_BASE ??
-  "https://notification-backend-production-9c18.up.railway.app";
+const API_BASE = "https://notification-backend-znes.onrender.com";
 
+// UI gender -> backend Gender enum
+type GenderUi = "FEMALE" | "MALE" | "PREFER_NOT_TO_SAY";
+type GenderBackend = "FEMALE" | "MALE" | "OTHER" | "PREFER_NOT_TO_SAY";
+
+function toBirthYear(birthDateYmd: string): number | null {
+  const t = (birthDateYmd || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  const y = Number(t.slice(0, 4));
+  return Number.isFinite(y) ? y : null;
+}
+
+function ymdToIsoUtc(birthDateYmd: string): string | null {
+  const t = (birthDateYmd || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  const d = new Date(`${t}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function mapGender(g: GenderUi): GenderBackend {
+  // UI: FEMALE | MALE | PREFER_NOT_TO_SAY
+  // Backend: FEMALE | MALE | OTHER | PREFER_NOT_TO_SAY
+  return g;
+}
+
+/** ✅ Toast helpers */
+const showSuccess = (msg: string) => {
+  Toast.show({
+    type: "success",
+    text1: msg,
+    position: "bottom",
+    visibilityTime: 1800,
+  });
+};
+
+const showError = (msg: string) => {
+  Toast.show({
+    type: "error",
+    text1: msg,
+    position: "bottom",
+    visibilityTime: 2200,
+  });
+};
+
+/** ✅ Zodiac TR -> backend enum (eğer Türkçe gelirse patlamasın) */
+const ZODIAC_TR_TO_ENUM: Record<string, string> = {
+  Koç: "ARIES",
+  Boğa: "TAURUS",
+  İkizler: "GEMINI",
+  Yengeç: "CANCER",
+  Aslan: "LEO",
+  Başak: "VIRGO",
+  Terazi: "LIBRA",
+  Akrep: "SCORPIO",
+  Yay: "SAGITTARIUS",
+  Oğlak: "CAPRICORN",
+  Kova: "AQUARIUS",
+  Balık: "PISCES",
+};
 
 export default function RegisterPasswordScreen({ route, navigation }: Props) {
   const { COLORS } = useTheme();
-  const { fullName, email } = route.params;
+
+  // ✅ Burada artık tüm register payload elimizde
+  const {
+    fullName,
+    email,
+    gender,
+    birthDate, // YYYY-MM-DD
+    zodiacSign,
+    city,
+    hometown,
+  } = route.params;
 
   const [password, setPassword] = useState("");
   const [passwordAgain, setPasswordAgain] = useState("");
@@ -40,14 +107,16 @@ export default function RegisterPasswordScreen({ route, navigation }: Props) {
     password === passwordAgain &&
     !loading;
 
+  const zodiacEnum = useMemo(() => {
+    if (!zodiacSign) return undefined;
+    // eğer "Koç" gibi TR gelirse enum’a çevir, zaten "ARIES" geliyorsa olduğu gibi bırak
+    return ZODIAC_TR_TO_ENUM[zodiacSign] || zodiacSign;
+  }, [zodiacSign]);
+
   const handleRegister = async () => {
     if (password.length < 8) {
-      return Alert.alert(
-        "Uyarı",
-        "Şifreniz en az 8 karakter olmalıdır."
-      );
+      return Alert.alert("Uyarı", "Şifreniz en az 8 karakter olmalıdır.");
     }
-
     if (password !== passwordAgain) {
       return Alert.alert("Uyarı", "Şifreler birbiriyle eşleşmiyor.");
     }
@@ -55,48 +124,58 @@ export default function RegisterPasswordScreen({ route, navigation }: Props) {
     try {
       setLoading(true);
 
+      // ✅ birthYear + birthDate ikisini de gönderelim (schema’da ikisi de var)
+      const birthYear = toBirthYear(birthDate);
+      const birthDateIso = ymdToIsoUtc(birthDate);
+
+      const body: any = {
+        email,
+        fullName,
+        password,
+        role: "USER",
+
+        // ✅ Onboarding alanları
+        gender: mapGender(gender),
+        city: city?.trim() || undefined,
+        hometown: hometown?.trim() || undefined,
+        zodiacSign: zodiacEnum || undefined,
+
+        // DB’de mevcut alanlar
+        birthYear: birthYear ?? undefined,
+        birthDate: birthDateIso ?? undefined,
+      };
+
+      // undefined temizle
+      Object.keys(body).forEach((k) => body[k] === undefined && delete body[k]);
+
       const res = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          fullName,
-          password,
-          role: "USER",
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(
-          Array.isArray(data?.message)
-            ? data.message.join("\n")
-            : data?.message || "Kayıt işlemi başarısız oldu."
-        );
+        const msg = Array.isArray(data?.message)
+          ? data.message.join("\n")
+          : data?.message || "Kayıt işlemi başarısız oldu.";
+        throw new Error(msg);
       }
 
-      // Burada backend zaten OTP üretip mail gönderiyor 🔥
-      Alert.alert(
-        "Kayıt Başarılı",
-        "E-posta adresinize gönderilen doğrulama kodunu girin.",
-        [
-          {
-            text: "Tamam",
-            onPress: () => {
-              navigation.replace("RegisterEmailOtp", {
-                fullName,
-                email,
-              });
-            },
-          },
-        ]
-      );
+      // ✅ OTP'ye gitme — toast + login
+      showSuccess("Kayıt oluşturuldu ✅ Şimdi giriş yapabilirsin.");
+
+      // Login ekranına at (stack temiz)
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Auth" }], // ✅ sende login'e buradan gidiyordu
+      });
     } catch (err: any) {
-      Alert.alert(
-        "Hata",
-        err?.message || "Kayıt sırasında bir sorun oluştu."
-      );
+      const msg = err?.message || "Kayıt sırasında bir sorun oluştu.";
+      // hem toast hem alert (istersen alert'i kaldırırız)
+      showError(msg);
+      Alert.alert("Hata", msg);
     } finally {
       setLoading(false);
     }
@@ -111,29 +190,17 @@ export default function RegisterPasswordScreen({ route, navigation }: Props) {
         {/* Logo */}
         <View style={styles.logoRow}>
           <View
-            style={[
-              styles.logoMark,
-              { backgroundColor: COLORS.PRIMARY_SOFT },
-            ]}
+            style={[styles.logoMark, { backgroundColor: COLORS.PRIMARY_SOFT }]}
           >
-            <Ionicons
-              name="flame"
-              size={18}
-              color={COLORS.PRIMARY}
-            />
+            <Ionicons name="flame" size={18} color={COLORS.PRIMARY} />
           </View>
-          <Text style={[styles.logoText, { color: COLORS.TEXT }]}>
-            NovaMe
-          </Text>
+          <Text style={[styles.logoText, { color: COLORS.TEXT }]}>NovaMe</Text>
         </View>
 
         {/* Başlık */}
-        <Text style={[styles.title, { color: COLORS.TEXT }]}>
-          Şifre Oluşturma
-        </Text>
+        <Text style={[styles.title, { color: COLORS.TEXT }]}>Şifre Oluşturma</Text>
         <Text style={[styles.subtitle, { color: COLORS.MUTED }]}>
-          Kayıt işleminizin sonuna geldiniz. Şifrenizi belirleyerek
-          uygulamaya erişebilirsiniz.
+          Kayıt işleminizin sonuna geldiniz. Şifrenizi belirleyerek uygulamaya erişebilirsiniz.
         </Text>
 
         {/* Yeni şifre */}
@@ -188,9 +255,7 @@ export default function RegisterPasswordScreen({ route, navigation }: Props) {
             onPress={() => setShowPasswordAgain((v) => !v)}
           >
             <Ionicons
-              name={
-                showPasswordAgain ? "eye-off-outline" : "eye-outline"
-              }
+              name={showPasswordAgain ? "eye-off-outline" : "eye-outline"}
               size={20}
               color={COLORS.MUTED}
             />
@@ -205,8 +270,8 @@ export default function RegisterPasswordScreen({ route, navigation }: Props) {
             color={COLORS.MUTED}
           />
           <Text style={[styles.infoText, { color: COLORS.MUTED }]}>
-            Şifreniz en az 8 karakter olmalıdır. Güvenliğiniz için
-            harf ve rakam kombinasyonları kullanmanızı öneririz.
+            Şifreniz en az 8 karakter olmalıdır. Güvenliğiniz için harf ve rakam kombinasyonları
+            kullanmanızı öneririz.
           </Text>
         </View>
 
@@ -217,9 +282,7 @@ export default function RegisterPasswordScreen({ route, navigation }: Props) {
           style={[
             styles.primaryButton,
             {
-              backgroundColor: canSubmit
-                ? COLORS.PRIMARY
-                : COLORS.PRIMARY_SOFT,
+              backgroundColor: canSubmit ? COLORS.PRIMARY : COLORS.PRIMARY_SOFT,
               shadowColor: COLORS.PRIMARY,
               opacity: canSubmit ? 1 : 0.9,
             },

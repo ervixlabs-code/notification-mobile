@@ -1,5 +1,5 @@
 // src/screens/LoginScreen.tsx
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Text,
   StyleSheet,
@@ -7,7 +7,7 @@ import {
   Pressable,
   View,
   ScrollView,
-  Platform,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Screen from "../components/Screen";
@@ -18,30 +18,23 @@ import { OneSignal } from "react-native-onesignal";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/RootNavigator";
 
+import { API_BASE, setToken } from "../lib/api";
+
 type Props = NativeStackScreenProps<RootStackParamList, "Auth">;
-
-/**
- * ✅ ÖNEMLİ:
- * - Android emulator: 10.0.2.2 çalışır
- * - iOS simulator: localhost çalışır
- * - GERÇEK CİHAZ: localhost / 10.0.2.2 ÇALIŞMAZ → bilgisayarının LAN IP'si lazım
- *
- * En temizi: EXPO_PUBLIC_API_BASE tanımla:
- * EXPO_PUBLIC_API_BASE="http://192.168.1.XX:3000"
- */
-const API_BASE =
-  (process.env as any)?.EXPO_PUBLIC_API_BASE ??
-  "https://notification-backend-production-9c18.up.railway.app";
-
 
 const ONESIGNAL_PERMISSION_ASKED_KEY = "onesignalPermissionAsked";
 
 export default function LoginScreen({ navigation }: Props) {
   const { COLORS } = useTheme();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  // ✅ double navigate engeli
+  const didNavigateRef = useRef(false);
 
   const showSuccess = (msg: string) => {
     Toast.show({
@@ -61,12 +54,14 @@ export default function LoginScreen({ navigation }: Props) {
     });
   };
 
-  // ✅ Login sonrası 1 kez izin iste
+  useEffect(() => {
+    didNavigateRef.current = false;
+  }, []);
+
+  /** ✅ Login sonrası 1 kez izin iste */
   const maybeRequestPushPermissionAfterLogin = async () => {
     try {
-      const asked = await SecureStore.getItemAsync(
-        ONESIGNAL_PERMISSION_ASKED_KEY
-      );
+      const asked = await SecureStore.getItemAsync(ONESIGNAL_PERMISSION_ASKED_KEY);
       if (asked === "1") return;
 
       await OneSignal.Notifications.requestPermission(true);
@@ -76,27 +71,60 @@ export default function LoginScreen({ navigation }: Props) {
     }
   };
 
-  // ✅ OneSignal playerId(deviceId) alıp backend'e yaz
+  /** ✅ OneSignal bind (External ID + optIn) */
+  const bindOneSignalToUser = async (userId: string | number) => {
+    const id = String(userId);
+
+    try {
+      // ✅ External ID set
+      OneSignal.login(id);
+
+      // ✅ permission (1 kez)
+      await maybeRequestPushPermissionAfterLogin();
+
+      // ✅ subscribe zorla (pushSubscription)
+      try {
+        OneSignal.User.pushSubscription.optIn();
+      } catch {}
+
+      console.log("✅ OneSignal bound to user:", id);
+    } catch (e) {
+      console.log("❌ OneSignal bind error:", e);
+    }
+  };
+
+  /** ✅ OneSignal pushSubscription id alıp backend'e yaz */
   const syncOneSignalDeviceIdToBackend = async (token: string) => {
     try {
-      let playerId: string | null = null;
+      let subId: string | null = null;
 
-      // ✅ FIX: OneSignal bazen geç hazır oluyor → retry
-      for (let i = 0; i < 6; i++) {
-        playerId = await OneSignal.User.pushSubscription.getIdAsync();
-        console.log("🔔 OneSignal playerId try", i + 1, playerId);
+      for (let i = 0; i < 10; i++) {
+        // bazı sürümlerde id gecikebiliyor
+        try {
+          // Bazı SDK’larda getIdAsync var
+          // @ts-ignore
+          if (OneSignal?.User?.pushSubscription?.getIdAsync) {
+            // @ts-ignore
+            subId = await OneSignal.User.pushSubscription.getIdAsync();
+          } else {
+            // fallback: property
+            // @ts-ignore
+            subId = OneSignal?.User?.pushSubscription?.id ?? null;
+          }
+        } catch {
+          subId = null;
+        }
 
-        if (playerId) break;
-        await new Promise((r) => setTimeout(r, 800));
+        console.log("🔔 OneSignal pushSubscriptionId try", i + 1, subId);
+
+        if (subId) break;
+        await new Promise((r) => setTimeout(r, 700));
       }
 
-      if (!playerId) {
-        console.log("❌ OneSignal playerId alınamadı (null).");
+      if (!subId) {
+        console.log("❌ OneSignal subscription id alınamadı (null).");
         return;
       }
-
-      console.log("✅ OneSignal playerId:", playerId);
-      console.log("🌐 API_BASE:", API_BASE);
 
       const res = await fetch(`${API_BASE}/mobile/profile`, {
         method: "PATCH",
@@ -104,7 +132,7 @@ export default function LoginScreen({ navigation }: Props) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ deviceId: playerId }),
+        body: JSON.stringify({ deviceId: subId }),
       });
 
       const txt = await res.text().catch(() => "");
@@ -120,85 +148,92 @@ export default function LoginScreen({ navigation }: Props) {
   };
 
   const handleLogin = async () => {
-    if (!email.trim()) return showError("Lütfen e-posta girin.");
-    if (!password.trim()) return showError("Lütfen şifre girin.");
+    if (submitting) return;
 
+    const safeEmail = email.trim().toLowerCase();
+    const safePass = password.trim();
+
+    if (!safeEmail) return showError("Lütfen e-posta girin.");
+    if (!safePass) return showError("Lütfen şifre girin.");
+
+    setSubmitting(true);
     try {
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          password: password.trim(),
-        }),
+        body: JSON.stringify({ email: safeEmail, password: safePass }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        return showError(
-          Array.isArray(data?.message)
-            ? data.message.join("\n")
-            : data.message || "Giriş başarısız"
+        showError(
+          Array.isArray((data as any)?.message)
+            ? (data as any).message.join("\n")
+            : (data as any).message || "Giriş başarısız"
         );
+        return;
       }
 
-      if (data?.accessToken) {
-        await SecureStore.setItemAsync("accessToken", data.accessToken);
+      const accessToken = (data as any)?.accessToken as string | undefined;
+      const userId = (data as any)?.user?.id as string | number | undefined;
+
+      if (!accessToken) {
+        showError("Token alınamadı. Lütfen tekrar deneyin.");
+        return;
       }
+
+      // ✅ token kaydet
+      await setToken(accessToken);
+
+      // ✅ rememberMe kaydet
       await SecureStore.setItemAsync("rememberMe", rememberMe ? "1" : "0");
 
       showSuccess("Giriş başarılı 🎉");
 
-      // ✅ izin (1 kez)
-      await maybeRequestPushPermissionAfterLogin();
-
-      // ✅ FIX: izin sonrası biraz bekleyip playerId sync
-      if (data?.accessToken) {
-        setTimeout(() => {
-          syncOneSignalDeviceIdToBackend(data.accessToken);
-        }, 1200);
+      // ✅ OneSignal bağla + optIn
+      if (userId !== undefined && userId !== null) {
+        await bindOneSignalToUser(userId);
+      } else {
+        await maybeRequestPushPermissionAfterLogin();
+        console.log("⚠️ Login response user.id yok → OneSignal.login atlandı.");
       }
 
-      setTimeout(() => {
+      // ✅ deviceId sync (await)
+      await syncOneSignalDeviceIdToBackend(accessToken);
+
+      // ✅ yalnızca 1 kez navigate
+      if (!didNavigateRef.current) {
+        didNavigateRef.current = true;
         navigation.replace("MainTabs");
-      }, 800);
-    } catch (error) {
+      }
+    } catch (e) {
       showError("Sunucuya bağlanılamadı");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <Screen>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Logo */}
         <View style={styles.logoRow}>
-          <View
-            style={[styles.logoMark, { backgroundColor: COLORS.PRIMARY_SOFT }]}
-          >
+          <View style={[styles.logoMark, { backgroundColor: COLORS.PRIMARY_SOFT }]}>
             <Ionicons name="flame" size={18} color={COLORS.PRIMARY} />
           </View>
-          <Text style={[styles.logoText, { color: COLORS.TEXT }]}>
-            NovaMe
-          </Text>
+          <Text style={[styles.logoText, { color: COLORS.TEXT }]}>NovaMe</Text>
         </View>
 
         {/* Başlıklar */}
-        <Text style={[styles.title, { color: COLORS.TEXT }]}>
-          Hesabınıza Giriş Yapın
-        </Text>
+        <Text style={[styles.title, { color: COLORS.TEXT }]}>Hesabınıza Giriş Yapın</Text>
         <Text style={[styles.subtitle, { color: COLORS.MUTED }]}>
           Günlük motivasyon kıvılcımınıza ulaşmak için giriş yapın.
         </Text>
 
         {/* E-posta input */}
         <View style={styles.fieldGroup}>
-          <Text style={[styles.label, { color: COLORS.MUTED }]}>
-            E-posta Adresi
-          </Text>
+          <Text style={[styles.label, { color: COLORS.MUTED }]}>E-posta Adresi</Text>
           <TextInput
             style={[
               styles.input,
@@ -206,8 +241,10 @@ export default function LoginScreen({ navigation }: Props) {
                 backgroundColor: COLORS.CARD,
                 borderColor: COLORS.BORDER,
                 color: COLORS.TEXT,
+                opacity: submitting ? 0.7 : 1,
               },
             ]}
+            editable={!submitting}
             placeholder="ornek@mail.com"
             placeholderTextColor={COLORS.MUTED}
             autoCapitalize="none"
@@ -224,24 +261,24 @@ export default function LoginScreen({ navigation }: Props) {
           <View
             style={[
               styles.passwordWrapper,
-              { backgroundColor: COLORS.CARD, borderColor: COLORS.BORDER },
+              {
+                backgroundColor: COLORS.CARD,
+                borderColor: COLORS.BORDER,
+                opacity: submitting ? 0.7 : 1,
+              },
             ]}
           >
             <TextInput
               style={[styles.passwordInput, { color: COLORS.TEXT }]}
+              editable={!submitting}
               placeholder="••••••••"
               placeholderTextColor={COLORS.MUTED}
               secureTextEntry={!showPassword}
               value={password}
               onChangeText={setPassword}
             />
-
-            <Pressable onPress={() => setShowPassword((v) => !v)}>
-              <Ionicons
-                name={showPassword ? "eye-off" : "eye"}
-                size={20}
-                color={COLORS.MUTED}
-              />
+            <Pressable disabled={submitting} onPress={() => setShowPassword((v) => !v)}>
+              <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color={COLORS.MUTED} />
             </Pressable>
           </View>
         </View>
@@ -249,6 +286,7 @@ export default function LoginScreen({ navigation }: Props) {
         {/* Beni Hatırla + Şifremi Unuttum */}
         <View style={styles.rowBetween}>
           <Pressable
+            disabled={submitting}
             style={styles.rowCenter}
             onPress={() => setRememberMe((v) => !v)}
           >
@@ -261,75 +299,83 @@ export default function LoginScreen({ navigation }: Props) {
                 },
               ]}
             >
-              {rememberMe && (
-                <Ionicons name="checkmark" size={14} color={COLORS.CARD} />
-              )}
+              {rememberMe && <Ionicons name="checkmark" size={14} color={COLORS.CARD} />}
             </View>
-            <Text style={[styles.rememberText, { color: COLORS.MUTED }]}>
-              Beni Hatırla
-            </Text>
+            <Text style={[styles.rememberText, { color: COLORS.MUTED }]}>Beni Hatırla</Text>
           </Pressable>
 
           <Pressable
-            onPress={() =>
-              showError("Şifremi unuttum akışı daha sonra eklenecek.")
-            }
+            disabled={submitting}
+            onPress={() => showError("Şifremi unuttum akışı daha sonra eklenecek.")}
           >
-            <Text style={[styles.linkText, { color: COLORS.PRIMARY }]}>
-              Şifremi Unuttum
-            </Text>
+            <Text style={[styles.linkText, { color: COLORS.PRIMARY }]}>Şifremi Unuttum</Text>
           </Pressable>
         </View>
 
         {/* Giriş Yap */}
         <Pressable
-          style={[styles.primaryButton, { backgroundColor: COLORS.PRIMARY }]}
+          style={[
+            styles.primaryButton,
+            { backgroundColor: COLORS.PRIMARY, opacity: submitting ? 0.75 : 1 },
+          ]}
           onPress={handleLogin}
+          disabled={submitting}
         >
-          <Text style={[styles.primaryButtonText, { color: COLORS.CARD }]}>
-            Giriş Yap
-          </Text>
+          {submitting ? (
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <ActivityIndicator color={COLORS.CARD} />
+              <Text style={[styles.primaryButtonText, { color: COLORS.CARD, marginLeft: 10 }]}>
+                Giriş yapılıyor…
+              </Text>
+            </View>
+          ) : (
+            <Text style={[styles.primaryButtonText, { color: COLORS.CARD }]}>Giriş Yap</Text>
+          )}
         </Pressable>
 
         {/* Kayıt Ol */}
         <View style={styles.centerRow}>
-          <Text style={[styles.smallText, { color: COLORS.MUTED }]}>
-            Hesabınız yok mu?{" "}
-          </Text>
-          <Pressable onPress={() => navigation.navigate("RegisterName")}>
-            <Text style={[styles.linkText, { color: COLORS.PRIMARY }]}>
-              Kayıt Olun
-            </Text>
+          <Text style={[styles.smallText, { color: COLORS.MUTED }]}>Hesabınız yok mu? </Text>
+          <Pressable disabled={submitting} onPress={() => navigation.navigate("RegisterName")}>
+            <Text style={[styles.linkText, { color: COLORS.PRIMARY }]}>Kayıt Olun</Text>
           </Pressable>
         </View>
 
         {/* Divider */}
         <View style={styles.dividerRow}>
-          <View
-            style={[styles.dividerLine, { backgroundColor: COLORS.BORDER }]}
-          />
+          <View style={[styles.dividerLine, { backgroundColor: COLORS.BORDER }]} />
           <Text style={[styles.smallText, { color: COLORS.MUTED }]}>veya</Text>
-          <View
-            style={[styles.dividerLine, { backgroundColor: COLORS.BORDER }]}
-          />
+          <View style={[styles.dividerLine, { backgroundColor: COLORS.BORDER }]} />
         </View>
 
         {/* Sosyal login */}
         <View style={styles.socialRow}>
           <Pressable
-            style={[styles.socialButton, { borderColor: COLORS.BORDER }]}
+            disabled={submitting}
+            style={[
+              styles.socialButton,
+              { borderColor: COLORS.BORDER, opacity: submitting ? 0.6 : 1 },
+            ]}
             onPress={() => showError("Google ile giriş daha sonra eklenecek.")}
           >
             <Ionicons name="logo-google" size={20} color={COLORS.TEXT} />
           </Pressable>
           <Pressable
-            style={[styles.socialButton, { borderColor: COLORS.BORDER }]}
+            disabled={submitting}
+            style={[
+              styles.socialButton,
+              { borderColor: COLORS.BORDER, opacity: submitting ? 0.6 : 1 },
+            ]}
             onPress={() => showError("Facebook ile giriş daha sonra eklenecek.")}
           >
             <Ionicons name="logo-facebook" size={20} color="#1877F2" />
           </Pressable>
           <Pressable
-            style={[styles.socialButton, { borderColor: COLORS.BORDER }]}
+            disabled={submitting}
+            style={[
+              styles.socialButton,
+              { borderColor: COLORS.BORDER, opacity: submitting ? 0.6 : 1 },
+            ]}
             onPress={() => showError("Apple ile giriş daha sonra eklenecek.")}
           >
             <Ionicons name="logo-apple" size={20} color={COLORS.TEXT} />
@@ -406,10 +452,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     alignItems: "center",
   },
-  rowCenter: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  rowCenter: { flexDirection: "row", alignItems: "center" },
   checkbox: {
     width: 18,
     height: 18,
@@ -429,23 +472,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  primaryButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  primaryButtonText: { fontSize: 16, fontWeight: "600" },
 
-  centerRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    marginBottom: 18,
-  },
+  centerRow: { flexDirection: "row", justifyContent: "center", marginBottom: 18 },
   smallText: { fontSize: 13 },
 
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
+  dividerRow: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
   dividerLine: { flex: 1, height: 1 },
 
   socialRow: { flexDirection: "row", justifyContent: "space-between" },

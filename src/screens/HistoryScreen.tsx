@@ -15,9 +15,7 @@ import Toast from "react-native-toast-message";
 import { Ionicons } from "@expo/vector-icons";
 
 /* ========= API BASE ========= */
-const API_BASE =
-  (process.env as any)?.EXPO_PUBLIC_API_BASE ||
-  (Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000");
+const API_BASE = "https://notification-backend-znes.onrender.com";
 
 async function getAuthHeaders() {
   const token = await SecureStore.getItemAsync("accessToken");

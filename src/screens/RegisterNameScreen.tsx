@@ -74,6 +74,22 @@ const zodiacGreeting: Record<ZodiacKey, string> = {
   Balık: "sezgisel bir Balık",
 };
 
+const ZODIAC_TO_ENUM: Record<ZodiacKey, string> = {
+  Koç: "ARIES",
+  Boğa: "TAURUS",
+  İkizler: "GEMINI",
+  Yengeç: "CANCER",
+  Aslan: "LEO",
+  Başak: "VIRGO",
+  Terazi: "LIBRA",
+  Akrep: "SCORPIO",
+  Yay: "SAGITTARIUS",
+  Oğlak: "CAPRICORN",
+  Kova: "AQUARIUS",
+  Balık: "PISCES",
+};
+
+
 export default function RegisterNameScreen({ navigation }: Props) {
   const { COLORS, isDark } = useTheme();
 
@@ -136,7 +152,7 @@ export default function RegisterNameScreen({ navigation }: Props) {
       // RootNavigator tipini sonra genişletirsin — şimdilik patlamasın
       gender,
       birthDate: `${yyyy}-${pad2(mm)}-${pad2(dd)}`,
-      zodiacSign: zodiac ?? undefined,
+      zodiacSign: zodiac ? ZODIAC_TO_ENUM[zodiac] : undefined,
     });
   };
 

@@ -19,9 +19,7 @@ import type { RootStackParamList } from "../navigation/RootNavigator";
 
 type Props = NativeStackScreenProps<RootStackParamList, "RegisterEmailOtp">;
 
-const API_BASE =
-  (process.env as any)?.EXPO_PUBLIC_API_BASE ??
-  "https://notification-backend-production-9c18.up.railway.app";
+const API_BASE = "https://notification-backend-znes.onrender.com";
 
 
 export default function RegisterEmailOtpScreen({ route, navigation }: Props) {

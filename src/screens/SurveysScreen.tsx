@@ -15,9 +15,7 @@ import * as SecureStore from "expo-secure-store";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../theme/ThemeProvider";
 
-const API_BASE =
-  (process.env as any)?.EXPO_PUBLIC_API_BASE ??
-  "https://notification-backend-production-9c18.up.railway.app";
+const API_BASE = "https://notification-backend-znes.onrender.com";
 
 
 async function getAuthHeaders() {
@@ -49,7 +47,7 @@ type SurveyItem = {
 const STATIC_TEST_SURVEYS: SurveyItem[] = [
   {
     id: 900001,
-    title: "Deneme 2",
+    title: "Kendini ne kadar tanıyorsun ?",
     description: "Tüm kullanıcılar • Taslak • 30.12.2025 14:54",
     questionCount: 0,
     publishedAt: "2025-12-30T14:54:00.000Z",
@@ -57,7 +55,23 @@ const STATIC_TEST_SURVEYS: SurveyItem[] = [
   },
   {
     id: 900002,
-    title: "Deneme",
+    title: "Kendinden ne kadar eminsin ?",
+    description: "Tüm kullanıcılar • Aktif • 30.12.2025 13:59",
+    questionCount: 0,
+    publishedAt: "2025-12-30T13:59:00.000Z",
+    status: "ACTIVE",
+  },
+  {
+    id: 900003,
+    title: "Kendini ne kadar derdin var ?",
+    description: "Tüm kullanıcılar • Taslak • 30.12.2025 14:54",
+    questionCount: 0,
+    publishedAt: "2025-12-30T14:54:00.000Z",
+    status: "DRAFT",
+  },
+  {
+    id: 900004,
+    title: "Kendinle ne kadar barışıksın ?",
     description: "Tüm kullanıcılar • Aktif • 30.12.2025 13:59",
     questionCount: 0,
     publishedAt: "2025-12-30T13:59:00.000Z",

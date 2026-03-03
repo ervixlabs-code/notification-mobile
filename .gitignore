@@ -43,3 +43,11 @@ yarn-error.*
 # macOS junk
 .DS_Store
 Library/
+
+# android signing
+android/keystore.properties
+android/keystores/*.jks
+
+# android signing
+android/keystore.properties
+android/keystores/*.jks

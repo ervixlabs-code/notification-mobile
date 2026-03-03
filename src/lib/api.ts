@@ -4,17 +4,15 @@ import * as SecureStore from "expo-secure-store";
 /**
  * ✅ PROD default
  * Expo'da env kullanacaksan mutlaka EXPO_PUBLIC_ prefix'i gerekir.
- * EXPO_PUBLIC_API_BASE tanımlı değilse direkt Railway'e düşer.
+ * EXPO_PUBLIC_API_BASE tanımlı değilse direkt PROD'a gider.
  */
-const DEFAULT_BASE = "https://notification-backend-production-9c18.up.railway.app";
+const DEFAULT_BASE = "https://notification-backend-znes.onrender.com";
 
-const ENV_BASE =
-  (process.env as any)?.EXPO_PUBLIC_API_BASE ||
-  DEFAULT_BASE;
+const ENV_BASE = (process.env as any)?.EXPO_PUBLIC_API_BASE || DEFAULT_BASE;
 
 export const API_BASE = String(ENV_BASE).replace(/\/$/, "");
 
-const TOKEN_KEY = "accessToken";
+export const TOKEN_KEY = "accessToken";
 
 export async function getToken() {
   try {
@@ -42,6 +40,19 @@ type ApiOptions = {
   auth?: boolean;
 };
 
+function safeParseJson(text: string) {
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return text;
+  }
+}
+
+function pickErrorMessage(data: any, fallback: string) {
+  const msg = data?.message || data?.error || fallback;
+  return Array.isArray(msg) ? msg.join("\n") : String(msg);
+}
+
 export async function api<T = any>(path: string, opts: ApiOptions = {}) {
   const method = opts.method ?? "GET";
   const auth = opts.auth ?? true;
@@ -63,29 +74,34 @@ export async function api<T = any>(path: string, opts: ApiOptions = {}) {
   });
 
   const text = await res.text().catch(() => "");
-  let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
+  const data = safeParseJson(text);
 
-  if (res.status === 401 || res.status === 403) {
+  /**
+   * ✅ KRİTİK FIX
+   * - SADECE 401 => token invalid/expired => token sil + login'e düş
+   * - 403 => yetki/rol hatası olabilir => token SİLME (yoksa her seferinde login ister)
+   */
+  if (res.status === 401) {
     try {
       await clearToken();
     } catch {}
-    const msg = (data && (data.message || data.error)) || "Unauthorized";
-    const message = Array.isArray(msg) ? msg.join("\n") : String(msg);
-    const err = new Error(message);
-    (err as any).status = res.status;
+    const err = new Error(pickErrorMessage(data, "Unauthorized"));
+    (err as any).status = 401;
+    throw err;
+  }
+
+  if (res.status === 403) {
+    const err = new Error(pickErrorMessage(data, "Forbidden"));
+    (err as any).status = 403;
     throw err;
   }
 
   if (!res.ok) {
-    const message =
-      (data && (data.message || data.error)) ||
-      `HTTP ${res.status} ${res.statusText}`;
-    throw new Error(Array.isArray(message) ? message.join("\n") : String(message));
+    const err = new Error(
+      pickErrorMessage(data, `HTTP ${res.status} ${res.statusText}`)
+    );
+    (err as any).status = res.status;
+    throw err;
   }
 
   return data as T;

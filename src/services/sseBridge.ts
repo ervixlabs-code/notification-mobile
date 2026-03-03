@@ -2,9 +2,8 @@ import EventSource from "react-native-sse";
 import * as SecureStore from "expo-secure-store";
 import * as Notifications from "expo-notifications";
 
-const API_BASE =
-  (process.env as any)?.EXPO_PUBLIC_API_BASE ??
-  "https://notification-backend-production-9c18.up.railway.app";
+const API_BASE = "https://notification-backend-znes.onrender.com";
+
 
 
 let es: EventSource | null = null;

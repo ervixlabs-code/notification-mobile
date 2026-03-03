@@ -1,5 +1,5 @@
 // src/navigation/RootNavigator.tsx
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   NavigationContainer,
   DarkTheme as NavDarkTheme,
@@ -8,6 +8,7 @@ import {
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
+import { ActivityIndicator, View } from "react-native";
 
 import HomeScreen from "../screens/HomeScreen";
 import HistoryScreen from "../screens/HistoryScreen";
@@ -25,6 +26,7 @@ import SurveysScreen from "../screens/SurveysScreen";
 import SurveyDetailScreen from "../screens/SurveyDetailScreen";
 
 import { useTheme } from "../theme/ThemeProvider";
+import { getToken } from "../lib/api"; // ✅ token bootstrap buradan
 
 /** Register akışı boyunca taşıyacağımız base payload */
 export type RegisterPayload = {
@@ -36,10 +38,9 @@ export type RegisterPayload = {
   city: string; // yaşadığın şehir
   hometown?: string; // memleket (opsiyonel)
 
-  email?: string; // email adımında dolacak
+  email: string; // email adımında dolacak (OTP ve password için gerekli)
 };
 
-// RootNavigator.tsx içinde sadece type'lar
 export type RootStackParamList = {
   Auth: undefined;
 
@@ -65,7 +66,7 @@ export type RootStackParamList = {
   RegisterPassword: {
     fullName: string;
     gender: "FEMALE" | "MALE" | "PREFER_NOT_TO_SAY";
-    birthDate: string;
+    birthDate: string; // YYYY-MM-DD
     zodiacSign?: string;
 
     city: string;
@@ -74,7 +75,9 @@ export type RootStackParamList = {
     email: string;
   };
 
-  RegisterEmailOtp: { email: string }; // ✅ fullName falan istemiyoruz artık burada
+  // ✅ OTP ekranı: verify sonrası devam / debug için full payload taşıyoruz
+  RegisterEmailOtp: RegisterPayload;
+
   MainTabs: undefined;
 
   // ✅ NEW: Survey detail
@@ -84,7 +87,7 @@ export type RootStackParamList = {
 export type TabParamList = {
   Home: undefined;
   History: undefined;
-  Surveys: undefined; // ✅ NEW
+  Surveys: undefined;
   Profile: undefined;
 };
 
@@ -112,7 +115,7 @@ function MainTabs() {
 
           if (route.name === "Home") iconName = "flame-outline";
           else if (route.name === "History") iconName = "time-outline";
-          else if (route.name === "Surveys") iconName = "list-outline"; // ✅ NEW
+          else if (route.name === "Surveys") iconName = "list-outline";
           else if (route.name === "Profile") iconName = "person-circle-outline";
 
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -121,35 +124,70 @@ function MainTabs() {
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: "Bugün" }} />
       <Tab.Screen name="History" component={HistoryScreen} options={{ title: "Geçmiş" }} />
-
-      {/* ✅ NEW: Anketler */}
       <Tab.Screen name="Surveys" component={SurveysScreen} options={{ title: "Anketler" }} />
-
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: "Profil" }} />
     </Tab.Navigator>
   );
 }
 
 export default function RootNavigator() {
-  const { isDark } = useTheme();
+  const { isDark, COLORS } = useTheme();
+
+  const [booting, setBooting] = useState(true);
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const token = await getToken();
+        if (!alive) return;
+        setHasToken(!!token);
+      } catch {
+        if (!alive) return;
+        setHasToken(false);
+      } finally {
+        if (!alive) return;
+        setBooting(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // ✅ Uygulama açılışında token kontrol ederken küçük loader
+  if (booting) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: isDark ? "#000" : "#fff",
+        }}
+      >
+        <ActivityIndicator size="small" color={COLORS?.PRIMARY ?? "#ff5a2a"} />
+      </View>
+    );
+  }
+
+  const initialRoute = hasToken ? "MainTabs" : "Auth";
 
   return (
     <NavigationContainer theme={isDark ? NavDarkTheme : NavLightTheme}>
-      <Stack.Navigator initialRouteName="Auth" screenOptions={{ headerShown: false }}>
-        {/* Splash’ten sonra ilk burası açılacak */}
+      <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Auth" component={LoginScreen} />
 
-        {/* ✅ Register akışı */}
         <Stack.Screen name="RegisterName" component={RegisterNameScreen} />
         <Stack.Screen name="RegisterLocation" component={RegisterLocationScreen} />
         <Stack.Screen name="RegisterEmail" component={RegisterEmailScreen} />
         <Stack.Screen name="RegisterPassword" component={RegisterPasswordScreen} />
         <Stack.Screen name="RegisterEmailOtp" component={RegisterEmailOtpScreen} />
 
-        {/* Login başarılı olunca buraya replace ediyoruz */}
         <Stack.Screen name="MainTabs" component={MainTabs} />
-
-        {/* ✅ NEW: Tab dışı detay sayfası */}
         <Stack.Screen name="SurveyDetail" component={SurveyDetailScreen} />
       </Stack.Navigator>
     </NavigationContainer>
