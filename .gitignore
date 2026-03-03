@@ -51,3 +51,12 @@ android/keystores/*.jks
 # android signing
 android/keystore.properties
 android/keystores/*.jks
+
+# allow android google services for EAS
+!android/
+!android/app/
+!android/app/google-services.json
+!android/app/src/
+!android/app/src/google-services.json
+!android/app/src/release/
+!android/app/src/release/google-services.json
