@@ -1,4 +1,4 @@
-package com.novame.notificationmobile
+package com.novamee.notificationmobile
 
 import com.novame.notificationmobile.BuildConfig
 import expo.modules.splashscreen.SplashScreenManager

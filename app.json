@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "userInterfaceStyle": "automatic",
-      "bundleIdentifier": "com.novame.notification-mobile",
+      "bundleIdentifier": "com.novamee.notification-mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "Konumunuzu yalnızca bulunduğunuz şehri otomatik seçmek için kullanıyoruz."
@@ -28,7 +28,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.novame.notificationmobile",
+      "package": "com.novamee.notificationmobile",
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
@@ -63,10 +63,10 @@
               "appExtensions": [
                 {
                   "targetName": "OneSignalNotificationServiceExtension",
-                  "bundleIdentifier": "com.novame.notification-mobile.OneSignalNotificationServiceExtension",
+                  "bundleIdentifier": "com.novamee.notification-mobile.OneSignalNotificationServiceExtension",
                   "entitlements": {
                     "com.apple.security.application-groups": [
-                      "group.com.novame.notification-mobile.onesignal"
+                      "group.com.novamee.notification-mobile.onesignal"
                     ]
                   }
                 }
