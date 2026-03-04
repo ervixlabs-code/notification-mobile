@@ -1,5 +1,6 @@
 package com.novame.notificationmobile
 
+import com.novame.notificationmobile.BuildConfig
 import android.app.Application
 import android.content.res.Configuration
 
