@@ -1,4 +1,4 @@
-package com.anonymous.notificationmobile
+package com.novame.notificationmobile
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

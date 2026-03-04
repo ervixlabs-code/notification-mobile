@@ -1,4 +1,4 @@
-package com.anonymous.notificationmobile
+package com.novame.notificationmobile
 
 import android.app.Application
 import android.content.res.Configuration
