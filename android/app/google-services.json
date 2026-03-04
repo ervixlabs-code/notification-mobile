@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "392982851895",
-    "project_id": "novame-1e86d",
-    "storage_bucket": "novame-1e86d.firebasestorage.app"
+    "project_number": "682311393757",
+    "project_id": "novamee-86aa7",
+    "storage_bucket": "novamee-86aa7.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:392982851895:android:6cd5a4979f240d590c2ab2",
+        "mobilesdk_app_id": "1:682311393757:android:2a0129f9ff77f863369634",
         "android_client_info": {
-          "package_name": "com.novame.notificationmobile"
+          "package_name": "com.novamee.notificationmobile"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCMHfH04nU15RBybQxN59VTUqgeIDp7NhM"
+          "current_key": "AIzaSyDbv727OfAuYucvr6MbLxkgwRnzP_aMM9k"
         }
       ],
       "services": {
